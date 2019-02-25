@@ -48,6 +48,7 @@ struct TeleopTwistJoy::Impl
 
   int enable_button;
   int enable_turbo_button;
+  int trigger_axe;
 
   std::map<std::string, int> axis_linear_map;
   std::map<std::string, double> scale_linear_map;
@@ -74,6 +75,7 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
 
   nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
   nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
+  nh_param->param<int>("trigger_axe", pimpl_->trigger_axe, -1);
 
   if (nh_param->getParam("axis_linear", pimpl_->axis_linear_map))
   {
@@ -132,8 +134,11 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
   // Initializes with zeros by default.
   geometry_msgs::Twist cmd_vel_msg;
 
+  bool enabled = false;
   if (enable_turbo_button >= 0 && joy_msg->buttons[enable_turbo_button])
   {
+    enabled = true;
+
     if (axis_linear_map.find("x") != axis_linear_map.end())
     {
       cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_turbo_map["x"];
@@ -158,12 +163,11 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
     {
       cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_turbo_map["roll"];
     }
-
-    cmd_vel_pub.publish(cmd_vel_msg);
-    sent_disable_msg = false;
   }
   else if (joy_msg->buttons[enable_button])
   {
+    enabled = true;
+
     if  (axis_linear_map.find("x") != axis_linear_map.end())
     {
       cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_map["x"];
@@ -188,20 +192,37 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
     {
       cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_map["roll"];
     }
+  }
+
+  if(enabled)
+  {
+    if(trigger_axe >= 0)
+    {
+      //Trigger return value between -1 and 1, which -1 is fully pressed and 1 is released.
+      //The trigger value is modified to be between 1.0 and 0, and 1.0 to be fully pressed.
+      double axis_trigger = (-joy_msg->axes[trigger_axe] + 1) / 2;
+
+      cmd_vel_msg.linear.x *= axis_trigger;
+      cmd_vel_msg.linear.y *= axis_trigger;
+      cmd_vel_msg.linear.z *= axis_trigger;
+
+      cmd_vel_msg.angular.x *= axis_trigger;
+      cmd_vel_msg.angular.y *= axis_trigger;
+      cmd_vel_msg.angular.z *= axis_trigger;
+    }
 
     cmd_vel_pub.publish(cmd_vel_msg);
     sent_disable_msg = false;
   }
-  else
+  else if (!sent_disable_msg)
   {
     // When enable button is released, immediately send a single no-motion command
     // in order to stop the robot.
-    if (!sent_disable_msg)
-    {
-      cmd_vel_pub.publish(cmd_vel_msg);
-      sent_disable_msg = true;
-    }
+    cmd_vel_pub.publish(cmd_vel_msg);
+    sent_disable_msg = true;
   }
+
+
 }
 
 }  // namespace teleop_twist_joy
