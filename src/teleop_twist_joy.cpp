@@ -31,198 +31,181 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 #include <string>
 
 
-namespace teleop_twist_joy
-{
+namespace teleop_twist_joy {
 
 /**
  * Internal members of class. This is the pimpl idiom, and allows more flexibility in adding
  * parameters later without breaking ABI compatibility, for robots which link TeleopTwistJoy
  * directly into base nodes.
  */
-struct TeleopTwistJoy::Impl
-{
-  void joyCallback(const sensor_msgs::Joy::ConstPtr& joy);
+    struct TeleopTwistJoy::Impl {
+        void joyCallback(const sensor_msgs::Joy::ConstPtr &joy);
 
-  ros::Subscriber joy_sub;
-  ros::Publisher cmd_vel_pub;
+        ros::Subscriber joy_sub;
+        ros::Publisher cmd_vel_pub;
 
-  int enable_button;
-  int enable_turbo_button;
-  int trigger_axe;
+        int enable_button;
+        int enable_turbo_button;
+        int fuel_trigger_axe;
 
-  std::map<std::string, int> axis_linear_map;
-  std::map<std::string, double> scale_linear_map;
-  std::map<std::string, double> scale_linear_turbo_map;
+        bool initialize;
 
-  std::map<std::string, int> axis_angular_map;
-  std::map<std::string, double> scale_angular_map;
-  std::map<std::string, double> scale_angular_turbo_map;
 
-  bool sent_disable_msg;
-};
+        std::map<std::string, int> axis_linear_map;
+        std::map<std::string, double> scale_linear_map;
+        std::map<std::string, double> scale_linear_turbo_map;
+
+        std::map<std::string, int> axis_angular_map;
+        std::map<std::string, double> scale_angular_map;
+        std::map<std::string, double> scale_angular_turbo_map;
+
+        bool sent_disable_msg;
+    };
 
 /**
  * Constructs TeleopTwistJoy.
  * \param nh NodeHandle to use for setting up the publisher and subscriber.
  * \param nh_param NodeHandle to use for searching for configuration parameters.
  */
-TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
-{
-  pimpl_ = new Impl;
+    TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle *nh, ros::NodeHandle *nh_param) {
+        pimpl_ = new Impl;
+        pimpl_->cmd_vel_pub = nh->advertise<geometry_msgs::Twist>("cmd_vel", 1, true);
+        pimpl_->joy_sub = nh->subscribe<sensor_msgs::Joy>("joy", 1, &TeleopTwistJoy::Impl::joyCallback, pimpl_);
 
-  pimpl_->cmd_vel_pub = nh->advertise<geometry_msgs::Twist>("cmd_vel", 1, true);
-  pimpl_->joy_sub = nh->subscribe<sensor_msgs::Joy>("joy", 1, &TeleopTwistJoy::Impl::joyCallback, pimpl_);
+        nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
+        nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
+        nh_param->param<int>("fuel_trigger_axe", pimpl_->fuel_trigger_axe, -1);
 
-  nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
-  nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
-  nh_param->param<int>("trigger_axe", pimpl_->trigger_axe, -1);
+        if (nh_param->getParam("axis_linear", pimpl_->axis_linear_map)) {
+            nh_param->getParam("axis_linear", pimpl_->axis_linear_map);
+            nh_param->getParam("scale_linear", pimpl_->scale_linear_map);
+            nh_param->getParam("scale_linear_turbo", pimpl_->scale_linear_turbo_map);
+        } else {
+            nh_param->param<int>("axis_linear", pimpl_->axis_linear_map["x"], 1);
+            nh_param->param<double>("scale_linear", pimpl_->scale_linear_map["x"], 0.5);
+            nh_param->param<double>("scale_linear_turbo", pimpl_->scale_linear_turbo_map["x"], 1.0);
+        }
 
-  if (nh_param->getParam("axis_linear", pimpl_->axis_linear_map))
-  {
-    nh_param->getParam("axis_linear", pimpl_->axis_linear_map);
-    nh_param->getParam("scale_linear", pimpl_->scale_linear_map);
-    nh_param->getParam("scale_linear_turbo", pimpl_->scale_linear_turbo_map);
-  }
-  else
-  {
-    nh_param->param<int>("axis_linear", pimpl_->axis_linear_map["x"], 1);
-    nh_param->param<double>("scale_linear", pimpl_->scale_linear_map["x"], 0.5);
-    nh_param->param<double>("scale_linear_turbo", pimpl_->scale_linear_turbo_map["x"], 1.0);
-  }
+        if (nh_param->getParam("axis_angular", pimpl_->axis_angular_map)) {
+            nh_param->getParam("axis_angular", pimpl_->axis_angular_map);
+            nh_param->getParam("scale_angular", pimpl_->scale_angular_map);
+            nh_param->getParam("scale_angular_turbo", pimpl_->scale_angular_turbo_map);
+        } else {
+            nh_param->param<int>("axis_angular", pimpl_->axis_angular_map["yaw"], 0);
+            nh_param->param<double>("scale_angular", pimpl_->scale_angular_map["yaw"], 0.5);
+            nh_param->param<double>("scale_angular_turbo",
+                                    pimpl_->scale_angular_turbo_map["yaw"], pimpl_->scale_angular_map["yaw"]);
+        }
 
-  if (nh_param->getParam("axis_angular", pimpl_->axis_angular_map))
-  {
-    nh_param->getParam("axis_angular", pimpl_->axis_angular_map);
-    nh_param->getParam("scale_angular", pimpl_->scale_angular_map);
-    nh_param->getParam("scale_angular_turbo", pimpl_->scale_angular_turbo_map);
-  }
-  else
-  {
-    nh_param->param<int>("axis_angular", pimpl_->axis_angular_map["yaw"], 0);
-    nh_param->param<double>("scale_angular", pimpl_->scale_angular_map["yaw"], 0.5);
-    nh_param->param<double>("scale_angular_turbo",
-        pimpl_->scale_angular_turbo_map["yaw"], pimpl_->scale_angular_map["yaw"]);
-  }
+        ROS_INFO_NAMED("TeleopTwistJoy", "Teleop enable button %i.", pimpl_->enable_button);
+        ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
+                            "Turbo on button %i.", pimpl_->enable_turbo_button);
 
-  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop enable button %i.", pimpl_->enable_button);
-  ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
-      "Turbo on button %i.", pimpl_->enable_turbo_button);
+        for (std::map<std::string, int>::iterator it = pimpl_->axis_linear_map.begin();
+             it != pimpl_->axis_linear_map.end(); ++it) {
+            ROS_INFO_NAMED("TeleopTwistJoy", "Linear axis %s on %i at scale %f.",
+                           it->first.c_str(), it->second, pimpl_->scale_linear_map[it->first]);
+            ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
+                                "Turbo for linear axis %s is scale %f.", it->first.c_str(),
+                                pimpl_->scale_linear_turbo_map[it->first]);
+        }
 
-  for (std::map<std::string, int>::iterator it = pimpl_->axis_linear_map.begin();
-      it != pimpl_->axis_linear_map.end(); ++it)
-  {
-    ROS_INFO_NAMED("TeleopTwistJoy", "Linear axis %s on %i at scale %f.",
-    it->first.c_str(), it->second, pimpl_->scale_linear_map[it->first]);
-    ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
-        "Turbo for linear axis %s is scale %f.", it->first.c_str(), pimpl_->scale_linear_turbo_map[it->first]);
-  }
+        for (std::map<std::string, int>::iterator it = pimpl_->axis_angular_map.begin();
+             it != pimpl_->axis_angular_map.end(); ++it) {
+            ROS_INFO_NAMED("TeleopTwistJoy", "Angular axis %s on %i at scale %f.",
+                           it->first.c_str(), it->second, pimpl_->scale_angular_map[it->first]);
+            ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
+                                "Turbo for angular axis %s is scale %f.", it->first.c_str(),
+                                pimpl_->scale_angular_turbo_map[it->first]);
+        }
 
-  for (std::map<std::string, int>::iterator it = pimpl_->axis_angular_map.begin();
-      it != pimpl_->axis_angular_map.end(); ++it)
-  {
-    ROS_INFO_NAMED("TeleopTwistJoy", "Angular axis %s on %i at scale %f.",
-    it->first.c_str(), it->second, pimpl_->scale_angular_map[it->first]);
-    ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
-        "Turbo for angular axis %s is scale %f.", it->first.c_str(), pimpl_->scale_angular_turbo_map[it->first]);
-  }
-
-  pimpl_->sent_disable_msg = false;
-}
-
-void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg)
-{
-  // Initializes with zeros by default.
-  geometry_msgs::Twist cmd_vel_msg;
-
-  bool enabled = false;
-  if (enable_turbo_button >= 0 && joy_msg->buttons[enable_turbo_button])
-  {
-    enabled = true;
-
-    if (axis_linear_map.find("x") != axis_linear_map.end())
-    {
-      cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_turbo_map["x"];
-    }
-    if (axis_linear_map.find("y") != axis_linear_map.end())
-    {
-      cmd_vel_msg.linear.y = joy_msg->axes[axis_linear_map["y"]] * scale_linear_turbo_map["y"];
-    }
-    if  (axis_linear_map.find("z") != axis_linear_map.end())
-    {
-      cmd_vel_msg.linear.z = joy_msg->axes[axis_linear_map["z"]] * scale_linear_turbo_map["z"];
-    }
-    if  (axis_angular_map.find("yaw") != axis_angular_map.end())
-    {
-      cmd_vel_msg.angular.z = joy_msg->axes[axis_angular_map["yaw"]] * scale_angular_turbo_map["yaw"];
-    }
-    if  (axis_angular_map.find("pitch") != axis_angular_map.end())
-    {
-      cmd_vel_msg.angular.y = joy_msg->axes[axis_angular_map["pitch"]] * scale_angular_turbo_map["pitch"];
-    }
-    if  (axis_angular_map.find("roll") != axis_angular_map.end())
-    {
-      cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_turbo_map["roll"];
-    }
-  }
-  else if (joy_msg->buttons[enable_button])
-  {
-    enabled = true;
-
-    if  (axis_linear_map.find("x") != axis_linear_map.end())
-    {
-      cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_map["x"];
-    }
-    if  (axis_linear_map.find("y") != axis_linear_map.end())
-    {
-      cmd_vel_msg.linear.y = joy_msg->axes[axis_linear_map["y"]] * scale_linear_map["y"];
-    }
-    if  (axis_linear_map.find("z") != axis_linear_map.end())
-    {
-      cmd_vel_msg.linear.z = joy_msg->axes[axis_linear_map["z"]] * scale_linear_map["z"];
-    }
-    if  (axis_angular_map.find("yaw") != axis_angular_map.end())
-    {
-      cmd_vel_msg.angular.z = joy_msg->axes[axis_angular_map["yaw"]] * scale_angular_map["yaw"];
-    }
-    if  (axis_angular_map.find("pitch") != axis_angular_map.end())
-    {
-      cmd_vel_msg.angular.y = joy_msg->axes[axis_angular_map["pitch"]] * scale_angular_map["pitch"];
-    }
-    if  (axis_angular_map.find("roll") != axis_angular_map.end())
-    {
-      cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_map["roll"];
-    }
-  }
-
-  if(enabled)
-  {
-    if(trigger_axe >= 0)
-    {
-      //Trigger return value between -1 and 1, which -1 is fully pressed and 1 is released.
-      //The trigger value is modified to be between 1.0 and 0, and 1.0 to be fully pressed.
-      double axis_trigger = (-joy_msg->axes[trigger_axe] + 1) / 2;
-
-      cmd_vel_msg.linear.x *= axis_trigger;
-      cmd_vel_msg.linear.y *= axis_trigger;
-      cmd_vel_msg.linear.z *= axis_trigger;
-
-      cmd_vel_msg.angular.x *= axis_trigger;
-      cmd_vel_msg.angular.y *= axis_trigger;
-      cmd_vel_msg.angular.z *= axis_trigger;
+        pimpl_->sent_disable_msg = false;
     }
 
-    cmd_vel_pub.publish(cmd_vel_msg);
-    sent_disable_msg = false;
-  }
-  else if (!sent_disable_msg)
-  {
-    // When enable button is released, immediately send a single no-motion command
-    // in order to stop the robot.
-    cmd_vel_pub.publish(cmd_vel_msg);
-    sent_disable_msg = true;
-  }
+    void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr &joy_msg) {
+        // Initializes with zeros by default.
+        geometry_msgs::Twist cmd_vel_msg;
+
+        bool enabled = false;
+        if (enable_turbo_button >= 0 && joy_msg->buttons[enable_turbo_button]) {
+            enabled = true;
+
+            if (axis_linear_map.find("x") != axis_linear_map.end()) {
+                cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_turbo_map["x"];
+            }
+            if (axis_linear_map.find("y") != axis_linear_map.end()) {
+                cmd_vel_msg.linear.y = joy_msg->axes[axis_linear_map["y"]] * scale_linear_turbo_map["y"];
+            }
+            if (axis_linear_map.find("z") != axis_linear_map.end()) {
+                cmd_vel_msg.linear.z = joy_msg->axes[axis_linear_map["z"]] * scale_linear_turbo_map["z"];
+            }
+            if (axis_angular_map.find("yaw") != axis_angular_map.end()) {
+                cmd_vel_msg.angular.z = joy_msg->axes[axis_angular_map["yaw"]] * scale_angular_turbo_map["yaw"];
+            }
+            if (axis_angular_map.find("pitch") != axis_angular_map.end()) {
+                cmd_vel_msg.angular.y = joy_msg->axes[axis_angular_map["pitch"]] * scale_angular_turbo_map["pitch"];
+            }
+            if (axis_angular_map.find("roll") != axis_angular_map.end()) {
+                cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_turbo_map["roll"];
+            }
+        } else if (joy_msg->buttons[enable_button]) {
+            enabled = true;
+
+            if (axis_linear_map.find("x") != axis_linear_map.end()) {
+                cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_map["x"];
+            }
+            if (axis_linear_map.find("y") != axis_linear_map.end()) {
+                cmd_vel_msg.linear.y = joy_msg->axes[axis_linear_map["y"]] * scale_linear_map["y"];
+            }
+            if (axis_linear_map.find("z") != axis_linear_map.end()) {
+                cmd_vel_msg.linear.z = joy_msg->axes[axis_linear_map["z"]] * scale_linear_map["z"];
+            }
+            if (axis_angular_map.find("yaw") != axis_angular_map.end()) {
+                cmd_vel_msg.angular.z = joy_msg->axes[axis_angular_map["yaw"]] * scale_angular_map["yaw"];
+            }
+            if (axis_angular_map.find("pitch") != axis_angular_map.end()) {
+                cmd_vel_msg.angular.y = joy_msg->axes[axis_angular_map["pitch"]] * scale_angular_map["pitch"];
+            }
+            if (axis_angular_map.find("roll") != axis_angular_map.end()) {
+                cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_map["roll"];
+            }
+        }
+
+        if (enabled) {
+            if (fuel_trigger_axe >= 0) {
+
+                // Bug with hardware where the value by default of the trigger was 0 which would result in having a
+                // axis_trigger of 0.5 (because of the math) and cause the joystick to publish even when there trigger
+                // is not in used.
+                double axis_trigger;
+                if (-joy_msg->axes[fuel_trigger_axe] == 0.000000 && !initialize) {
+                    //sent_disable_msg = true;
+                    return;
+                } else {
+                    initialize = true;
+                    axis_trigger = (-joy_msg->axes[fuel_trigger_axe] + 1) / 2;
+                }
+                //Trigger return value between -1 and 1, which -1 is fully pressed and 1 is released.
+                //The trigger value is modified to be between 1.0 and 0, and 1.0 to be fully pressed.
+                cmd_vel_msg.linear.x *= axis_trigger;
+                cmd_vel_msg.linear.y *= axis_trigger;
+                cmd_vel_msg.linear.z *= axis_trigger;
+
+                cmd_vel_msg.angular.x *= axis_trigger;
+                cmd_vel_msg.angular.y *= axis_trigger;
+                cmd_vel_msg.angular.z *= axis_trigger;
+
+                cmd_vel_pub.publish(cmd_vel_msg);
+            }
+            sent_disable_msg = false;
+        } else if (!sent_disable_msg) {
+            // When enable button is released, immediately send a single no-motion command
+            // in order to stop the robot.
+            cmd_vel_pub.publish(cmd_vel_msg);
+            sent_disable_msg = true;
+        }
 
 
-}
+    }
 
 }  // namespace teleop_twist_joy
