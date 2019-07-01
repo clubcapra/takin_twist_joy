@@ -129,9 +129,8 @@ namespace teleop_twist_joy {
         // Initializes with zeros by default.
         geometry_msgs::Twist cmd_vel_msg;
 
-        bool enabled = false;
+
         if (enable_turbo_button >= 0 && joy_msg->buttons[enable_turbo_button]) {
-            enabled = true;
 
             if (axis_linear_map.find("x") != axis_linear_map.end()) {
                 cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_turbo_map["x"];
@@ -151,9 +150,7 @@ namespace teleop_twist_joy {
             if (axis_angular_map.find("roll") != axis_angular_map.end()) {
                 cmd_vel_msg.angular.x = joy_msg->axes[axis_angular_map["roll"]] * scale_angular_turbo_map["roll"];
             }
-        } else if (joy_msg->buttons[enable_button]) {
-            enabled = true;
-
+        } else {
             if (axis_linear_map.find("x") != axis_linear_map.end()) {
                 cmd_vel_msg.linear.x = joy_msg->axes[axis_linear_map["x"]] * scale_linear_map["x"];
             }
@@ -174,33 +171,33 @@ namespace teleop_twist_joy {
             }
         }
 
-        if (enabled) {
-            if (fuel_trigger_axe >= 0) {
 
-                // Bug with hardware : the value by default of the trigger is 0 (suppose to be 1) which would result in having a
-                // axis_trigger of 0.5 and cause the joystick to publish even when the trigger is not in used.
-                double axis_trigger;
-                if (-joy_msg->axes[fuel_trigger_axe] == 0.000000 && !initialize) {
-                    return;
-                } else {
-                    initialize = true;
-                    axis_trigger = (-joy_msg->axes[fuel_trigger_axe] + 1) / 2;
-                    axis_trigger = (((-joy_msg->axes[brake_trigger_axe] + 1) / 2) != 0) ? 0 : axis_trigger;
-                }
-                //Trigger return value between -1 and 1, which -1 is fully pressed and 1 is released.
-                //The trigger value is modified to be between 1.0 and 0, and 1.0 to be fully pressed.
-                cmd_vel_msg.linear.x *= axis_trigger;
-                cmd_vel_msg.linear.y *= axis_trigger;
-                cmd_vel_msg.linear.z *= axis_trigger;
+        if (fuel_trigger_axe >= 0) {
 
-                cmd_vel_msg.angular.x *= axis_trigger;
-                cmd_vel_msg.angular.y *= axis_trigger;
-                cmd_vel_msg.angular.z *= axis_trigger;
-
-                cmd_vel_pub.publish(cmd_vel_msg);
+            // Bug with hardware : the value by default of the trigger is 0 (suppose to be 1) which would result in having a
+            // axis_trigger of 0.5 and cause the joystick to publish even when the trigger is not in used.
+            double axis_trigger;
+            if (-joy_msg->axes[fuel_trigger_axe] == 0.000000 && !initialize) {
+                return;
+            } else {
+                initialize = true;
+                axis_trigger = (-joy_msg->axes[fuel_trigger_axe] + 1) / 2;
+                axis_trigger = (((-joy_msg->axes[brake_trigger_axe] + 1) / 2) != 0) ? 0 : axis_trigger;
             }
-            sent_disable_msg = false;
-        } else if (!sent_disable_msg) {
+            //Trigger return value between -1 and 1, which -1 is fully pressed and 1 is released.
+            //The trigger value is modified to be between 1.0 and 0, and 1.0 to be fully pressed.
+            cmd_vel_msg.linear.x *= axis_trigger;
+            cmd_vel_msg.linear.y *= axis_trigger;
+            cmd_vel_msg.linear.z *= axis_trigger;
+
+            cmd_vel_msg.angular.x *= axis_trigger;
+            cmd_vel_msg.angular.y *= axis_trigger;
+            cmd_vel_msg.angular.z *= axis_trigger;
+
+            cmd_vel_pub.publish(cmd_vel_msg);
+        }
+        sent_disable_msg = false;
+        if (!sent_disable_msg) {
             // When enable button is released, immediately send a single no-motion command
             // in order to stop the robot.
             cmd_vel_pub.publish(cmd_vel_msg);
