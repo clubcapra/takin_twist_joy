@@ -47,6 +47,7 @@ namespace teleop_twist_joy {
         int enable_button;
         int enable_turbo_button;
         int fuel_trigger_axe;
+        int brake_trigger_axe;
 
         bool initialize;
 
@@ -75,6 +76,8 @@ namespace teleop_twist_joy {
         nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
         nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
         nh_param->param<int>("fuel_trigger_axe", pimpl_->fuel_trigger_axe, -1);
+        nh_param->param<int>("fuel_trigger_axe", pimpl_->brake_trigger_axe, -1);
+
 
         if (nh_param->getParam("axis_linear", pimpl_->axis_linear_map)) {
             nh_param->getParam("axis_linear", pimpl_->axis_linear_map);
@@ -174,16 +177,15 @@ namespace teleop_twist_joy {
         if (enabled) {
             if (fuel_trigger_axe >= 0) {
 
-                // Bug with hardware where the value by default of the trigger was 0 which would result in having a
-                // axis_trigger of 0.5 (because of the math) and cause the joystick to publish even when there trigger
-                // is not in used.
+                // Bug with hardware : the value by default of the trigger is 0 (suppose to be 1) which would result in having a
+                // axis_trigger of 0.5 and cause the joystick to publish even when the trigger is not in used.
                 double axis_trigger;
                 if (-joy_msg->axes[fuel_trigger_axe] == 0.000000 && !initialize) {
-                    //sent_disable_msg = true;
                     return;
                 } else {
                     initialize = true;
                     axis_trigger = (-joy_msg->axes[fuel_trigger_axe] + 1) / 2;
+                    axis_trigger = (((-joy_msg->axes[brake_trigger_axe] + 1) / 2) != 0) ? 0 : axis_trigger;
                 }
                 //Trigger return value between -1 and 1, which -1 is fully pressed and 1 is released.
                 //The trigger value is modified to be between 1.0 and 0, and 1.0 to be fully pressed.

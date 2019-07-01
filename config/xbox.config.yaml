@@ -7,4 +7,5 @@ scale_angular: 1.0
 
 enable_button: 0  # L2 shoulder button
 enable_turbo_button: 10  # L1 shoulder button
-fuel_trigger_axe: 5
+fuel_trigger_axe: 5  # Right trigger
+brake_trigger_axe: 6 # Left trigger
